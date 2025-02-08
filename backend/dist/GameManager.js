@@ -1,41 +1,57 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.GameManger = void 0;
+exports.GameManager = void 0;
 const Game_1 = require("./Game");
 const Message_1 = require("./Message");
-class GameManger {
+class GameManager {
     constructor() {
-        this.game = [];
+        this.games = [];
         this.pendingUser = null;
-        this.users = [];
+        this.users = new Map();
     }
     addUser(user) {
-        this.users.push(user);
+        console.log('User added');
         this.addHandler(user);
     }
     removeUser(user) {
-        this.users = this.users.filter(u => u !== user);
+        console.log('User removed');
+        const game = this.users.get(user);
+        if (game) {
+            game.handleDisconnect(user);
+            this.games = this.games.filter(g => g !== game);
+        }
+        if (this.pendingUser === user) {
+            this.pendingUser = null;
+        }
+        this.users.delete(user);
     }
     addHandler(socket) {
         socket.on('message', (data) => {
-            const message = JSON.parse(data.toString());
-            if (message.type === Message_1.INIT_GAME) {
-                if (this.pendingUser) {
-                    const game = new Game_1.Game(this.pendingUser, socket);
-                    this.game.push(game);
-                    this.pendingUser = null;
+            try {
+                const message = JSON.parse(data.toString());
+                if (message.type === Message_1.INIT_GAME) {
+                    if (this.pendingUser) {
+                        const game = new Game_1.Game(this.pendingUser, socket);
+                        this.games.push(game);
+                        this.users.set(this.pendingUser, game);
+                        this.users.set(socket, game);
+                        this.pendingUser = null;
+                    }
+                    else {
+                        this.pendingUser = socket;
+                    }
                 }
-                else {
-                    this.pendingUser = socket;
+                if (message.type === Message_1.MOVE) {
+                    const game = this.users.get(socket);
+                    if (game) {
+                        game.makeMove(socket, message.move);
+                    }
                 }
             }
-            if (message.type === Message_1.MOVE) {
-                const game = this.game.find(g => g.player1 === socket || g.player2 === socket);
-                if (game) {
-                    game.makeMove(socket, message.move);
-                }
+            catch (error) {
+                console.error('Error handling message:', error);
             }
         });
     }
 }
-exports.GameManger = GameManger;
+exports.GameManager = GameManager;
